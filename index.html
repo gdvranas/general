@@ -1,0 +1,440 @@
+<!doctype html>
+<html>
+<body>
+<button id="copyToClipboard" onclick="copyToClipboard()">Copy</button>
+<script>
+const x = `// ==============================================
+//             GLOBAL SCOPE VARIABLES            
+// ==============================================
+
+var currentCoasterId = 0;
+var currentScreen = "homeScreen";
+
+// Var arrays getting from data table
+var coastersID = getColumn("Rollercoasters", "id");
+var rollercoasterName = getColumn("Rollercoasters", "Rollercoaster Name");
+var amusementPark = getColumn("Rollercoasters", "Amusement Park");
+var city = getColumn("Rollercoasters", "City");
+var country = getColumn("Rollercoasters", "Country");
+var constructionMaterial = getColumn("Rollercoasters", "Construction Material");
+var height = getColumn("Rollercoasters", "Height (ft)");
+var coasterSpeed = getColumn("Rollercoasters", "Speed (mph)");
+var coasterLength = getColumn("Rollercoasters", "Length (ft)");
+var inversion = getColumn("Rollercoasters", "Inversion");
+var numberOfInversions = getColumn("Rollercoasters", "Number of Inversions");
+var yearOpened = getColumn("Rollercoasters", "Year Opened");
+var latitude = getColumn("Rollercoasters", "Latitude");
+var longitude = getColumn("Rollercoasters", "Longitude");
+
+var weatherIcon = {hot:"https://openweathermap.org/img/wn/01d@2x.png",cool:"https://openweathermap.org/img/wn/04d@2x.png",cold:"https://openweathermap.org/img/wn/13d@2x.png"};
+
+// Filtered coasters according to user's customizations
+var fId = [];
+var fP = [];
+var fCi = [];
+var fCo = [];
+
+// ==============================================
+//              EVENT HANDLERS                   
+// ==============================================
+
+
+onEvent("bookmarkIconButton","click",function(){
+  favOrUnfav();
+});
+
+onEvent("backButtonInfoScreen", "click", function( ) {
+  fillCoasterInfoScreen("revert");
+});
+
+onEvent("backButtonSearchScreen", "click", function( ) {
+	changeScreen("homeScreen");
+});
+
+onEvent("dpsButton","click",function(){
+  changeScreen("dpsScreen");
+});
+
+onEvent("gotgButton","click",function(){
+  changeScreen("gotgScreen");
+});
+
+onEvent("searchButtonHomeScreen", "click", function( ) {
+	changeScreen("searchScreen");
+});
+
+onEvent("searchButton", "click", function( ) {
+  filterCoasters();
+});
+
+// Triggered when the user changes the Country dropdown
+onEvent("searchCountryDropdownInput", "change", function() {
+  var selectedCountry = getText("searchCountryDropdownInput");
+  
+  if (selectedCountry === "Select a Country...") {
+    // If the user resets the country, restore the parks dropdown to ALL unique parks
+    setProperty("searchParkDropdownInput", "options", uniqueParks);
+  } else {
+    // Otherwise, create a temporary array to hold only the parks in the selected country
+    var filteredParks = ["Select a Park..."];
+    
+    for (var i = 0; i < country.length; i++) {
+      if (country[i] === selectedCountry) {
+        // Make sure we don't add duplicate parks to this new list
+        if (filteredParks.indexOf(amusementPark[i]) === -1) {
+          appendItem(filteredParks, amusementPark[i]);
+        }
+      }
+    }
+    // Update the park dropdown to only show the filtered list
+    setProperty("searchParkDropdownInput", "options", filteredParks);
+  }
+  
+  // Always reset the park dropdown value when the country changes to prevent a park from showing that doesn't belong to the new country
+  setProperty("searchParkDropdownInput", "value", "Select a Park...");
+});
+
+onEvent("dpsScreenBackButton", "click", function(){
+  changeScreen("homeScreen");
+});
+
+onEvent("gotgScreenBackButton", "click", function(){
+  changeScreen("homeScreen");
+});
+
+onEvent("searchParkDropdownInput", "change", function() {
+  var selectedPark = getText("searchParkDropdownInput");
+
+  if (selectedPark === "Select a Park...") {
+    setProperty("searchCountryDropdownInput", "options", uniqueCountries);
+  } else {
+    var parkIndex = amusementPark.indexOf(selectedPark);
+    
+    if (parkIndex !== -1) {
+      var correspondingCountry = country[parkIndex];
+      setProperty("searchCountryDropdownInput", "options", ["Select a Country...", correspondingCountry]);
+      setProperty("searchCountryDropdownInput", "value", correspondingCountry);
+    }
+  }
+});
+
+// ==============================================
+//                  FUNCTIONS                    
+// ==============================================
+
+
+// ======================================
+// COASTERS SEARCH & PAGES
+// ======================================
+// This function updates the information on the coaster information screen, based on row ID
+function fillCoasterInfoScreen(rcid){
+  if(rcid=="revert"){ // This is to reset the page when back button is clicked
+    currentCoasterId = 0;
+    setText("coasterNameOutput", "XXXXXXXXXX XXXXX");
+    setText("parkOutput", "XXXXX XXXX XXXXX XXXX - XXXX, XX, XXXXX XXXX");
+    setText("materialOutput", "XXXXX");
+    setText("heightOutput", "XX ft");
+    setText("speedOutput", "XX mph");
+    setText("lengthOutput", "XXX ft");
+    setText("inversionsOutput", "X");
+    setText("yearOpenedOutput", "XXXX");
+    setText("temperatureOutput", "XX°F");
+    setText("windChillOutput", "XX°F");
+    setText("precipitationOutput", "XXXX in");
+    setImageURL("weatherImageOutput","");
+    setProperty("bookmarkIconButton", "image", "icon://fa-bookmark-o");
+    changeScreen("searchScreen");
+  }
+  else{
+  var frcid = rcid-1;
+  currentCoasterId = rcid;
+  var userID = getUserId();
+  var isFavorited = false;
+  getWeather(latitude[frcid], longitude[frcid]);
+  setText("coasterNameOutput", rollercoasterName[frcid]);
+  setText("parkOutput", amusementPark[frcid]+" - "+city[frcid]+", "+country[frcid]);
+  setText("materialOutput", constructionMaterial[frcid]);
+  setText("heightOutput", Math.round(height[frcid])+" ft");
+  setText("speedOutput", Math.round(coasterSpeed[frcid])+" mph");
+  setText("lengthOutput", Math.round(coasterLength[frcid])+" ft");
+  if(inversion[frcid]=="No"){
+    setText("inversionsOutput", "None");
+  } else{
+      setText("inversionsOutput", numberOfInversions[frcid]);
+  }
+  setText("yearOpenedOutput", yearOpened[frcid]);
+  
+  readRecords("Users Favorites", {}, function(records) {
+    for (var i=0; i < records.length; i++) {
+      if(records[i].usersID == userID && records[i].coasterIDs == currentCoasterId){
+        isFavorited = true;
+      }
+    }
+    if(isFavorited){
+      setProperty("bookmarkIconButton", "image", "icon://fa-bookmark");
+    }
+    else{
+      setProperty("bookmarkIconButton", "image", "icon://fa-bookmark-o");
+    }
+    changeScreen("coasterInfoScreen");
+  });
+  }
+}
+
+// This function calls the open-meteo.com API to return in JSON form the current weather of the coords provided
+function getWeather(latOfPlace, longOfPlace){
+  var apiURL = "https://api.open-meteo.com/v1/forecast?latitude="+latOfPlace+"&longitude="+longOfPlace+"&current=temperature_2m,apparent_temperature,precipitation&past_days=0&forecast_days=7&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch"; // The URL that gets the listing's coords
+  startWebRequest(apiURL, function(status,type,content){
+    if(status==200){
+      var weatherData = JSON.parse(content);
+      var temp = weatherData.current.temperature_2m;
+      var feelsLike = weatherData.current.apparent_temperature;
+      var precipitation = weatherData.current.precipitation;
+      
+      // Updates current weather section of UI 
+      setText("temperatureOutput", Math.round(temp)+"°F");
+      setText("windChillOutput", Math.round(feelsLike)+"°F");
+      setText("precipitationOutput", precipitation+" in");
+      if(temp>80){
+        setImageURL("weatherImageOutput",weatherIcon.hot);
+      }
+      else if (50<temp && temp<=80){
+        setImageURL("weatherImageOutput",weatherIcon.cool);
+      }
+      else if (temp<=50){
+        setImageURL("weatherImageOutput",weatherIcon.cold);
+      }
+    }
+  });
+}
+
+var uniqueCountries = ["Select a Country..."];
+var uniqueParks = ["Select a Park..."];
+(function(){
+for (var i = 0; i < country.length; i++) {
+  if (uniqueCountries.indexOf(country[i]) === -1) {
+    appendItem(uniqueCountries, country[i]);
+  }
+}
+
+for (var x = 0; x < amusementPark.length; x++) {
+  if (uniqueParks.indexOf(amusementPark[x]) === -1) {
+    appendItem(uniqueParks, amusementPark[x]);
+  }
+}
+setProperty("searchCountryDropdownInput", "options", uniqueCountries);
+setProperty("searchParkDropdownInput", "options", uniqueParks);
+})();
+
+function filterCoasters() {
+  // Reset var arrays to prevent crash
+  fId = [];
+  fP = [];
+  fCo = [];
+  hideElement("errorMessageSearchScreen");
+
+  // Get all three input values
+  var searchQuery = getText("searchInput").toLowerCase();
+  var searchCountry = getText("searchCountryDropdownInput");
+  var searchPark = getText("searchParkDropdownInput");
+  
+  for(var i = 0; i < coastersID.length; i++) {
+    var matchName = (searchQuery === "" || rollercoasterName[i].toLowerCase().includes(searchQuery));
+    var matchCountry = (searchCountry === "Select a Country..." || country[i] === searchCountry);
+    var matchPark = (searchPark === "Select a Park..." || amusementPark[i] === searchPark);
+
+    // If ALL three of these conditions are true, add the item to the filtered lists
+    if (matchName && matchCountry && matchPark) {
+      appendItem(fId, coastersID[i]);
+      appendItem(fP, amusementPark[i]);
+      appendItem(fCo, country[i]);
+    }
+  }
+  if(fId.length===0 || fId.length>1){
+    showElement("errorMessageSearchScreen");
+  }
+  else{
+    hideElement("errorMessageSearchScreen");
+    fillCoasterInfoScreen(fId[0]);
+  }
+}
+
+function favOrUnfav() {
+  var userID = getUserId();
+  var isFavorited = false;
+  var favDeleteID = 0;
+
+  readRecords("Users Favorites", {}, function(records) {
+    
+    // Check if the user has this specific coaster favorited
+    for (var i = 0; i < records.length; i++) {
+      if (records[i].usersID == userID && records[i].coasterIDs == currentCoasterId) {
+        isFavorited = true;
+        favDeleteID = records[i].id; // Save the specific row ID in case we need to delete it
+        break; // Stop looping once we find it
+      }
+    }
+    
+      if (isFavorited) {
+      // It's already favorited so delete it using found ID
+      deleteRecord("Users Favorites", {id: favDeleteID}, function(record) {
+        setProperty("bookmarkIconButton", "image", "icon://fa-bookmark-o");
+      });
+    } else {
+      // It's not favorited so create a new record
+      createRecord("Users Favorites", {usersID: userID, coasterIDs: currentCoasterId}, function(record) {
+        setProperty("bookmarkIconButton", "image", "icon://fa-bookmark");
+      });
+    }
+  });
+}
+
+function changeScreen(screenName){
+  currentScreen = screenName;
+  setScreen(screenName);
+}
+
+// ======================================
+// GUARDIANS OF THE GALAXY
+// ======================================
+
+// Guardians of the Galaxy cosmic rewind song odds
+// app calculates your odds of getting your favorite song on the ride.
+
+// list of all songs
+var songList = ["September - Earth, Wind & Fire", "Disco Inferno - The Trammps", "Conga - Gloria Estefan", "Everybody Wants to Rule the World - Tears for Fears", "I Ran (So Far Away) - A Flock of Seagulls", "One Way or Another - Blondie"];
+var songDropdown = [];
+var ridesDropdown = [];
+(function(){
+// Song dropdown
+for (var i = 0; i < songList.length; i++) {
+  appendItem(songDropdown, songList[i]);
+}
+for (var j = 1; j <= 6; j++) {
+  appendItem(ridesDropdown, j + " ride(s)");
+}
+
+setProperty("songDropdown", "options", songDropdown);
+setProperty("ridesDropdown", "options", ridesDropdown);
+
+// fun fact about the ride
+setText("funFactOutput", "Fun Fact: Cosmic Rewind is the world's longest enclosed roller coaster");
+})();
+// User clicks calculate and it figues out the odds
+onEvent("calculateButton2", "click", function() {
+
+ // Grab how many rides they selected (1-6), so getIndex gives us which option they picked, starting from 0, so we add 1 to get the actual number of rides
+ 
+ 
+var numRides = getProperty("ridesDropdown", "index") + 1;
+
+// the odds of getting any one song on a single ride is 1/6 and if the user wants same song twice you just multiply itself to itself.
+
+var oddsBottom = 1;
+  for (var k = 0; k < numRides; k++) {
+  oddsBottom = oddsBottom * 6;
+}
+  
+// show the fraction result, always 1 over whatever oddsBottom is
+  setText("fractionOutput", "Fraction: 1/" + oddsBottom);
+
+  
+// calculate the percentage by dividing 1 by the bottom number
+// multiply by 100 to get percentage then round
+  var percentage = (1 / oddsBottom) * 100;  
+percentage = Math.round(percentage * 100) / 100;
+  setText("percentOutput", "Percentage: " + percentage + "%");
+  
+//message that reacts to how lucky they need to be
+  if (numRides == 1) {
+setText("messageOutput2", "Nice! You have a 1 out of 6 shot.");
+} else if (numRides == 2) {
+  setText("messageOutput2", "Hopefully your lucky because your going to need it!");
+} else if (numRides == 3) {
+  setText("messageOutput2", "It's defenely a longshot, so dont get your hopes up.");
+} else {
+   setText("messageOutput2", "This usually NEVER happens, but who says it won't for you?");
+}
+});
+
+
+// reset button clears everything
+onEvent("gotgResetButton", "click", function() {
+  setText("fractionOutput", "Fraction: --");
+  setText("percentOutput", "Percentage: --");
+  setText("messageOutput2", "Select a song and how many rides to calculate odds"); 
+});
+
+
+// ======================================
+// DYNAMIC PRICING SIMULATOR
+// ======================================
+
+// Dynamic Pricing simulator, based on weather, holidays, and weekday.
+// when the calculate button is clicked it will figure out the rough price
+onEvent("calculateButton", "click", function() {
+var weather = getText("weatherDropdown");
+var holiday = getText("holidayDropdown");
+var dayType = getText ("dayDropdown");
+//sunny days bring more people so its more expensive
+var basePrice = 0;
+if (weather == "Sunny") {
+  basePrice = 120;
+} else if (weather == "Cloudy") {
+  basePrice = 95;
+} else if (weather == "Rainy") {
+  basePrice = 75;
+ }
+
+//Its extra if its a holiday or school break and extra for weekend
+var holidayExtra = 0;
+  if (holiday == "Yes, Holiday or School Break") {
+  holidayExtra = 40;
+  }
+var dayExtra = 0;
+  if (dayType == "Weekend") {
+  dayExtra = 30;
+}
+
+// add it all up
+var totalPrice = basePrice + holidayExtra + dayExtra;
+
+// show a range of plus or minus $10 so its more realistic
+var lowPrice = totalPrice - 10;
+var highPrice = totalPrice + 10;
+
+//Message for final price
+if (totalPrice >= 180) {
+setText("messageOutput", "🎢 Peak season! Maybe pack a lunch...");
+ } else if (totalPrice >= 150) {
+setText("messageOutput", "💸 Busy day! But the rides should be worth it.");
+ } else if (totalPrice >= 120) {
+setText("messageOutput", "🎡 Pretty average day, not bad, not amazing.");
+ } else if (totalPrice >= 95) {
+setText("messageOutput", "🙂 Not bad.. A quieter day means shorter lines.");
+ } else {
+setText("messageOutput", "🌧️ Rainy day! your wallet may be happy but your mood wont be.");
+}
+
+// displays the price range
+setText("priceOutput", "$" + lowPrice + " - $" + highPrice);
+
+});
+
+// reset button restarts process
+onEvent("resetButton1", "click", function() {
+  setText("priceOutput", "$---");
+  setText("messageOutput", "Fill out the options to predict your price");
+});`
+
+async function copyToClipboard() {
+  try {
+    await navigator.clipboard.writeText(x);
+    console.log('Text successfully copied!');
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+  }
+}
+</script>
+</body>
+</html>
